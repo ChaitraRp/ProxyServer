@@ -67,7 +67,7 @@ int receiveData(int sock, char** data){
 	
 	if((recvBytes = recv(sock, *data, dataSize-1, 0)) < 0){
 		if(errno == EAGAIN || errno == EWOULDBLOCK){
-			perror("Timeout\n");
+			perror("Timeout");
 			return -1;
 		}
 	}
@@ -89,7 +89,7 @@ int receiveData(int sock, char** data){
 	}
 	
 	if(recvBytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK){
-		perror("Timeout\n");
+		perror("Timeout");
 		return -1;
 	}
 	return receivedBytes;
@@ -97,13 +97,50 @@ int receiveData(int sock, char** data){
 
 
 //----------------------------------PARSE HTTP REQUEST------------------------------
-int parseHTTPRequest(char* reqBuf,  int reqLegth, HTTP_REQUEST* request){
+int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 	if(reqBuf == NULL){
 		printf("Empty buffer\n");
 		return -1;
 	}
 	
-	printf("%s", reqBuf);
+	char temp[reqLegth];
+	char *remoteReq;
+	char *remoteReqLine;
+	char *remoteReqUrl;
+	char *remoteReqDomain;
+	char* body;
+	
+	bzero(temp, sizeof(temp)*sizeof(char));
+	memcpy(temp, reqBuf, reqLegth*sizeof(char));
+	
+	char *reqLine = strtok_r(temp, "\r\n", &remoteReq);
+	char *reqVal = strtok_r(reqLine, " ", &remoteReqLine);
+	if(reqVal == NULL){
+		perror("Command not found");
+		return -1;
+	}
+	
+	REQUEST->COMMAND = strdup(reqVal);
+	
+	reqVal = strtok_r(NULL, " ", &remoteReqLine);
+	if(reqVal != NULL){
+		REQUEST->COMPLETE_PATH = strdup(reqVal);
+		REQUEST->REQUEST_URL = calloc(1,  sizeof(url));
+		parseURL(REQUEST->COMPLETE_PATH,  REQUEST->REQUEST_URL);
+	}
+	
+	reqVal = strtok_r(NULL, " ", &remoteReqLine);
+	if(reqVal == NULL){
+		perror("Version error");
+		return -1;
+	}
+	
+	REQUEST->VERSION = strdup(reqVal);
+	
+	if((body = strstr(reqBuf, "\r\n\r\n")) != NULL && strlen(body) > 4)
+		REQUEST->BODY = strdup(body)
+	
+	return 0;
 }
 
 
@@ -135,7 +172,6 @@ int main(int argc, char *argv[]){
 		printf("Usage: ./proxyserver <PORT NUMBER> [<CACHE TIMEOUT VALUE>]\n");
 		exit(1);
 	}
-	
 	//Cache timeout settings
 	if(argc < 3)
 		cacheTimeout = DEFAULT_CACHE_TIMEOUT;
@@ -146,11 +182,11 @@ int main(int argc, char *argv[]){
 	//create socket, bind() and listen()
 	sock = socket(PF_INET, SOCK_STREAM, 0);
 	if(bind(sock, (struct sockaddr*)&serverAddress, (socklen_t)sizeof(serverAddress)) < 0){
-		perror("Error in bind()\n");
+		perror("Error in bind()");
 		exit(1);
 	}
 	if(listen(sock, MAXCONN) < 0){
-		perror("Error in listen()\n");
+		perror("Error in listen()");
 		exit(1);
 	}
 	
@@ -166,7 +202,7 @@ int main(int argc, char *argv[]){
 			//receive
 			recvBytes = receiveData(clientSock, &requestBuffer);
 			if(recvBytes  <= 0){
-				perror("Error in recv()\n");
+				perror("Error in recv()");
 				close(clientSock);
 				exit(0);
 			}
@@ -175,7 +211,7 @@ int main(int argc, char *argv[]){
 			bzero(&httpRequest, sizeof(httpRequest));
 			
 			if(parseHTTPRequest(requestBuffer, recvBytes, &httpRequest) < 0){
-				perror("Error in parseHTTPRequest()\n");
+				perror("Error in parseHTTPRequest()");
 				internalError(clientSock, "Unable to parse HTTP Request");
 				close(clientSock);
 				exit(0);
