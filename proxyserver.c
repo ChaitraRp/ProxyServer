@@ -184,8 +184,15 @@ int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 
 
 //------------------------------INTERNAL ERROR--------------------------------------
-int internalError(int clientSock, char* errorMessage){
-	
+int internalError(int sockfd, char* errorMessage){
+	if(sockfd == -1)
+		return 1;
+	int length = strlen("HTTP/1.0 500 Internal Server Error: %s") + strlen(errorMessage) + 1;
+	char error[length];
+	bzero(error, sizeof(error));
+	snprintf(error, sizeof(error), "HTTP/1.0 500 Internal Server Error: %s", errorMessage);
+	sendError(sockfd, error, NULL);
+	return 0;
 }
 
 
