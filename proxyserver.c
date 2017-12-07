@@ -24,6 +24,7 @@
 //all about cache
 #define DEFAULT_CACHE_TIMEOUT 10
 #define CACHEDIR ".cache"
+#define MAX_RECV_BUF_SIZE 10000
 
 //other values
 #define MAXCONN 25
@@ -46,6 +47,73 @@ typedef struct HTTP_REQUEST{
 	char *BODY;
 	url* REQUEST_URL;
 } HTTP_REQUEST;
+
+struct timeval timeout;
+
+
+//--------------------------------RECEIVE DATA FROM SOCKET--------------------------
+int receiveData(int sock, char** data){
+	int dataSize = 0;
+	int receivedBytes = 0;
+	int recvBytes = 0;
+	
+	bzero(&timeout, sizeof(timeout));
+	timeout.tv_sec = 60;
+	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+	
+	*data = calloc(MAX_RECV_BUF_SIZE, sizeof(char));
+	dataSize = MAX_RECV_BUF_SIZE;
+	bzero(*data, dataSize);
+	
+	if((recvBytes = recv(sock, *data, dataSize-1, 0)) < 0){
+		if(errno == EAGAIN || errno == EWOULDBLOCK){
+			perror("Timeout\n");
+			return -1;
+		}
+	}
+	
+	receivedBytes = recvBytes;
+	timeout.tv_sec = 0;
+    timeout.tv_usec = 500000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+	
+	char temp[MAX_RECV_BUF_SIZE];
+	bzero(temp, sizeof(temp));
+	
+	while((recvBytes = recv(sock, temp, MAX_RECV_BUF_SIZE-1, 0)) > 0){
+		*data = realloc(*data, (dataSize+recvBytes)*sizeof(char));
+		dataSize += recvBytes;
+		memcpy(*data+receivedBytes, temp, recvBytes+1);
+		receivedBytes += recvBytes;
+		bzero(temp, sizeof(temp));
+	}
+	
+	if(recvBytes == -1 && errno != EAGAIN && errno != EWOULDBLOCK){
+		perror("Timeout\n");
+		return -1;
+	}
+	return receivedBytes;
+}
+
+
+//----------------------------------PARSE HTTP REQUEST------------------------------
+int parseHTTPRequest(char* reqBuf,  int reqLegth, HTTP_REQUEST* request){
+	if(reqBuf == NULL){
+		printf("Empty buffer\n");
+		return -1;
+	}
+	
+	printf("%s", reqBuf);
+}
+
+
+
+
+//------------------------------INTERNAL ERROR---------------------------------------
+int internalError(int clientSock, char* errorMessage){
+	
+}
+
 
 //-----------------------------------------MAIN--------------------------------------
 //Ref: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
@@ -77,7 +145,7 @@ int main(int argc, char *argv[]){
 	
 	//create socket, bind() and listen()
 	sock = socket(PF_INET, SOCK_STREAM, 0);
-	if(bind(socket, (struct sockaddr*)&sock, (socklen_t)sizeof(serverAddress)) < 0){
+	if(bind(sock, (struct sockaddr*)&serverAddress, (socklen_t)sizeof(serverAddress)) < 0){
 		perror("Error in bind()\n");
 		exit(1);
 	}
@@ -90,6 +158,7 @@ int main(int argc, char *argv[]){
 		//accept()
 		clientSock = accept(sock, (struct sockaddr*)&clientAddress, (socklen_t*)&clientLength);
 		
+		//fork()
 		if(fork() == 0){
 			char *requestBuffer;
 			int recvBytes;
@@ -99,18 +168,23 @@ int main(int argc, char *argv[]){
 			if(recvBytes  <= 0){
 				perror("Error in recv()\n");
 				close(clientSock);
-				exit(1);
+				exit(0);
 			}
 			
 			HTTP_REQUEST httpRequest;
 			bzero(&httpRequest, sizeof(httpRequest));
 			
+			if(parseHTTPRequest(requestBuffer, recvBytes, &httpRequest) < 0){
+				perror("Error in parseHTTPRequest()\n");
+				internalError(clientSock, "Unable to parse HTTP Request");
+				close(clientSock);
+				exit(0);
+			}
 			
-		}
-	}
-	
+			
+		}//end of fork()
+	}//end of while(1)
 }
-
 
 
 
