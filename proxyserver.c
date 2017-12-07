@@ -51,21 +51,23 @@ typedef struct HTTP_REQUEST{
 struct timeval timeout;
 
 
+
+
 //--------------------------------RECEIVE DATA FROM SOCKET--------------------------
-int receiveData(int sock, char** data){
+int receiveData(int sockfd, char** data){
 	int dataSize = 0;
 	int receivedBytes = 0;
 	int recvBytes = 0;
 	
 	bzero(&timeout, sizeof(timeout));
 	timeout.tv_sec = 60;
-	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
 	
 	*data = calloc(MAX_RECV_BUF_SIZE, sizeof(char));
 	dataSize = MAX_RECV_BUF_SIZE;
 	bzero(*data, dataSize);
 	
-	if((recvBytes = recv(sock, *data, dataSize-1, 0)) < 0){
+	if((recvBytes = recv(sockfd, *data, dataSize-1, 0)) < 0){
 		if(errno == EAGAIN || errno == EWOULDBLOCK){
 			perror("Timeout");
 			return -1;
@@ -75,12 +77,12 @@ int receiveData(int sock, char** data){
 	receivedBytes = recvBytes;
 	timeout.tv_sec = 0;
     timeout.tv_usec = 500000;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
 	
 	char temp[MAX_RECV_BUF_SIZE];
 	bzero(temp, sizeof(temp));
 	
-	while((recvBytes = recv(sock, temp, MAX_RECV_BUF_SIZE-1, 0)) > 0){
+	while((recvBytes = recv(sockfd, temp, MAX_RECV_BUF_SIZE-1, 0)) > 0){
 		*data = realloc(*data, (dataSize+recvBytes)*sizeof(char));
 		dataSize += recvBytes;
 		memcpy(*data+receivedBytes, temp, recvBytes+1);
@@ -96,6 +98,43 @@ int receiveData(int sock, char** data){
 }
 
 
+
+
+
+//------------------------------------PARSE URL-------------------------------------
+int parseURL(char* bufURL, url* URLSTRUCTURE){
+	char *remoteReqUrl;
+	char *remoteReqDomain;
+	char *copyURL = strdup(bufURL);
+	
+	char *valURL = strtok_r(copyURL, ":/", &remoteReqUrl);
+	if(valURL != NULL)
+		URLSTRUCTURE->SERVICE = strdup(valURL);
+	
+	valURL = strtok_r(NULL, "/", &remoteReqUrl);
+	if(valURL != NULL){
+		char* domainVal = strtok_r(valURL, ":", &remoteReqDomain);
+		if(domainVal != NULL){
+			URLSTRUCTURE->DOMAIN = strdup(domainVal);
+			char* portVal = NULL;
+			while((domainVal = strtok_r(NULL, ":", &remoteReqDomain)) != NULL)
+				portVal = domainVal;
+			if(portVal != NULL)
+				URLSTRUCTURE->PORT = strdup(portVal);
+		}
+	}
+	
+	if(remoteReqUrl != NULL)
+		URLSTRUCTURE->PATH = strdup(remoteReqUrl);
+	
+	free(copyURL);
+	return 0;
+}
+
+
+
+
+
 //----------------------------------PARSE HTTP REQUEST------------------------------
 int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 	if(reqBuf == NULL){
@@ -106,8 +145,6 @@ int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 	char temp[reqLegth];
 	char *remoteReq;
 	char *remoteReqLine;
-	char *remoteReqUrl;
-	char *remoteReqDomain;
 	char* body;
 	
 	bzero(temp, sizeof(temp)*sizeof(char));
@@ -138,7 +175,7 @@ int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 	REQUEST->VERSION = strdup(reqVal);
 	
 	if((body = strstr(reqBuf, "\r\n\r\n")) != NULL && strlen(body) > 4)
-		REQUEST->BODY = strdup(body)
+		REQUEST->BODY = strdup(body);
 	
 	return 0;
 }
@@ -146,13 +183,15 @@ int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 
 
 
-//------------------------------INTERNAL ERROR---------------------------------------
+//------------------------------INTERNAL ERROR--------------------------------------
 int internalError(int clientSock, char* errorMessage){
 	
 }
 
 
-//-----------------------------------------MAIN--------------------------------------
+
+
+//-----------------------------------------MAIN-------------------------------------
 //Ref: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
 int main(int argc, char *argv[]){
 	struct sockaddr_in serverAddress;
