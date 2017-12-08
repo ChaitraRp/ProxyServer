@@ -182,6 +182,26 @@ int parseHTTPRequest(char* reqBuf, int reqLegth, HTTP_REQUEST* REQUEST){
 
 
 
+//--------------------------------SEND ERROR MESSAGE------------------------------
+int sendErrorMessage(int sockfd, char* error, char* content){
+	int errorLength = 0;
+	int contentLength = 0;
+	if(error != NULL)
+		errorLength = strlen(error);
+	if(content != NULL)
+		contentLength = strlen(content);
+	
+	char resultError[errorLength + contentLength + 5];
+	bzero(resultError, sizeof(resultError));
+	
+	snprintf(resultError, sizeof(resultError), "%s\r\n%s\r\n", error, content);
+	
+	send(sockfd, resultError, strlen(resultError)+1, 0);
+}
+
+
+
+
 
 //------------------------------INTERNAL ERROR--------------------------------------
 int internalError(int sockfd, char* errorMessage){
@@ -191,9 +211,86 @@ int internalError(int sockfd, char* errorMessage){
 	char error[length];
 	bzero(error, sizeof(error));
 	snprintf(error, sizeof(error), "HTTP/1.0 500 Internal Server Error: %s", errorMessage);
-	sendError(sockfd, error, NULL);
+	sendErrorMessage(sockfd, error, NULL);
 	return 0;
 }
+
+
+
+
+//-----------------------------REQUEST ERROR----------------------------------------
+int otherRequestErrors(int sockfd, HTTP_REQUEST request){
+	//method check
+	if(strcmp(request.COMMAND, "GET") != 0){
+		if(strcmp(request.COMMAND, "HEAD") == 0 || strcmp(request.COMMAND, "POST") == 0
+        || strcmp(request.COMMAND, "PUT") == 0 || strcmp(request.COMMAND, "DELETE") == 0 || strcmp(request.COMMAND, "TRACE") == 0 || strcmp(request.COMMAND, "CONNECT") == 0){
+			char *response = "UNSUPPORTED METHOD";
+			int l1 = strlen("<html><body>501 Not Implemented %s: %s</body></html>");
+			int l2 = strlen(response);
+			int l3 = strlen(request.COMMAND);
+			char responseContent[l1 + l2 + l3 + 1];
+			bzero(responseContent, sizeof(responseContent));
+			snprintf(responseContent, sizeof(responseContent), "<html><body>501 Not Implemented %s: %s</body></html>", response, request.COMMAND);
+			
+			int l4 = strlen("HTTP/1.1 501 Not Implemented\r\nContent-Length: %lu");
+			char errorHead[l4+10+1];
+			bzero(errorHead, sizeof(errorHead));
+			snprintf(errorHead, sizeof(errorHead), "HTTP/1.1 501 Not Implemented\r\nContent-Length: %lu", sizeof(responseContent));
+			sendErrorMessage(sockfd, errorHead, responseContent);
+			return -1;
+		}
+		else{
+			int l1 = strlen("<html><body>400 Bad Request: Invalid Method: %s</body></html>");
+			int l2 = strlen(request.COMMAND);
+			char responseContent[l1+l2+1];
+			bzero(responseContent, sizeof(responseContent));
+			snprintf(responseContent, sizeof(responseContent), "<html><body>400 Bad Request: Invalid Method: %s</body></html>", request.COMMAND);
+			
+			int l3 = strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu");
+			char errorHead[l3+10+1];
+			bzero(errorHead, sizeof(errorHead));
+			snprintf(errorHead, sizeof(errorHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(responseContent));
+			sendErrorMessage(sockfd, errorHead, responseContent);
+			return -1;
+		}
+	}
+	
+	//version check
+	else if(!(strcmp(request.VERSION, "HTTP/1.0") == 0 || strcmp(request.VERSION, "HTTP/1.1") == 0)){
+		int l1 = strlen("<html><body>400 Bad Request: Invalid HTTP-Version: %s</body></html>");
+		int l2 = strlen(request.VERSION);
+		char responseContent[l1+l2+1];
+		bzero(responseContent, sizeof(responseContent));
+		snprintf(responseContent, sizeof(responseContent), "<html><body>400 Bad Request: Invalid HTTP-Version: %s</body></html>", request.VERSION);
+		
+		int l3 = strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu");
+		char errorHead[l3+10+1];
+		bzero(errorHead, sizeof(errorHead));
+		snprintf(errorHead, sizeof(errorHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(responseContent));
+		sendErrorMessage(sockfd, errorHead, responseContent);
+		return -1;
+	}
+	
+	else if(strcmp(request.COMPLETE_PATH, "") == 0){
+		int l1 = strlen("<html><body>400 Bad Request: Invalid URL: \"%s\"</body></html>");
+		int l2 = strlen(request.COMPLETE_PATH);
+		char responseContent[l1+l2+1];
+		bzero(responseContent, sizeof(responseContent));
+		snprintf(responseContent, sizeof(responseContent), "<html><body>400 Bad Request: Invalid URL: \"%s\"</body></html>", request.COMPLETE_PATH);
+		
+		int l3 = strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu");
+		char errorHead[l3+10+1];
+		bzero(errorHead, sizeof(errorHead));
+		snprintf(errorHead, sizeof(errorHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(responseContent));
+		sendErrorMessage(sockfd, errorHead, responseContent);
+		sendErrorMessage(sockfd, errorHead, responseContent);
+		return -1;
+	}
+	return 0;
+}
+
+
+
 
 
 
@@ -261,6 +358,13 @@ int main(int argc, char *argv[]){
 				internalError(clientSock, "Unable to parse HTTP Request");
 				close(clientSock);
 				exit(0);
+			}
+			
+			//gather response
+			if(!(otherRequestErrors(clientSock, httpRequest))){
+				char *response;
+				int responseLength;
+				int responseType;
 			}
 			
 			
