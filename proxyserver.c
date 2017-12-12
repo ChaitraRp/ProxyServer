@@ -49,7 +49,6 @@ typedef struct http_request {
 
 
 
-
 //------------------------------RECEIVE DATA FUNCTION------------------------------
 //Ref: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
 int receiveData(int clientsockfd, char** data){
@@ -97,6 +96,54 @@ int receiveData(int clientsockfd, char** data){
     }
     return dataReceived;
 }
+
+
+
+//----------------------------PARSE HTTP_REQUEST-----------------------------------
+int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct)
+{
+    char tempBuf[reqBufLength];
+	char *temp1;
+	char *temp2;
+	char* reqBody;
+    bzero(tempBuf, sizeof(tempBuf)*sizeof(char));
+	
+	if(reqBuf == NULL){
+        printf("Received empty request buffer\n");
+        return -1;
+    }
+
+    memcpy(tempBuf, reqBuf, reqBufLength*sizeof(char));
+    char* reqLine = strtok_r(tempBuf, "\r\n", &temp1);
+    char* reqVal = strtok_r(reqLine, " ", &temp2);
+    
+	if(reqVal == NULL){
+        printf("Command not found\n");
+        return -1;
+    }
+    httpStruct->HTTP_COMMAND = strdup(reqVal);
+
+    reqVal = strtok_r(NULL, " ", &temp2);
+    if(reqVal != NULL){
+        httpStruct->COMPLETE_PATH = strdup(reqVal);
+        httpStruct->HTTP_REQ_URL = calloc(1, sizeof(URL));
+        parse_url(httpStruct->COMPLETE_PATH, httpStruct->HTTP_REQ_URL);
+    }
+
+    reqVal = strtok_r(NULL, " ", &temp2);
+    if(reqVal == NULL){
+        printf("HTTP version not found\n");
+        return -1;
+    }
+    httpStruct->HTTP_VERSION = strdup(reqVal);
+
+    
+    if((reqBody = strstr(reqBuf, "\r\n\r\n")) != NULL && strlen(reqBody) > 4)
+        httpStruct->HTTP_BODY = strdup(reqBody);
+
+    return 0;
+}
+
 
 
 
