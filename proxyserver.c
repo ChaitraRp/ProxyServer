@@ -25,11 +25,14 @@
 //--------------------------------------#DEFINE------------------------------------
 #define DEFAULT_CACHE_TIMEOUT 10
 #define MAXCONN 20
+#define MAXRECVBUFSIZE 10000
+#define MAXREQBUFFERSIZE 1000
 
 //----------------------------------GLOBAL VARIABLES-------------------------------
 long int cacheTimeout;
 int proxySocket;
 int debug = 1;
+struct timeval timeout;
 
 
 //----------------------------------STRUCT FOR URL---------------------------------
@@ -43,6 +46,57 @@ typedef struct http_request {
     char *HTTP_COMMAND, *COMPLETE_PATH, *HTTP_VERSION, *HTTP_BODY;
     URL* HTTP_REQ_URL;
 } HTTP_REQUEST;
+
+
+
+
+//------------------------------RECEIVE DATA FUNCTION------------------------------
+//Ref: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
+int receiveData(int clientsockfd, char** data){
+	int dataLength = 0;
+    int dataReceived = 0;
+	int bytesReceived;
+	char tempData[MAXRECVBUFSIZE];
+    bzero(tempData, sizeof(tempData));
+	
+    //timeout part
+    bzero(&timeout, sizeof(timeout));
+    timeout.tv_sec = 60;
+    setsockopt(clientsockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+
+    *data = calloc(MAXRECVBUFSIZE, sizeof(char));
+    dataLength = MAXRECVBUFSIZE;
+    bzero(*data, dataLength);
+
+	//recv()
+    if((bytesReceived = recv(clientsockfd, *data, dataLength-1, 0)) < 0){
+        if(errno == EAGAIN || errno == EWOULDBLOCK){
+            perror("Error in recv(). Unable to receive data");
+            return -1;
+        }
+    }
+    dataReceived = bytesReceived;
+
+	//timeout part
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 500000;
+    setsockopt(clientsockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
+
+    //collect all the data
+    while((bytesReceived = recv(clientsockfd, tempData, MAXRECVBUFSIZE-1, 0)) > 0){
+        *data = realloc(*data, (dataLength + bytesReceived)*sizeof(char));
+        dataLength = dataLength + bytesReceived;
+        memcpy(*data + dataReceived, tempData, bytesReceived+1);
+        dataReceived += bytesReceived;
+        bzero(tempData, sizeof(tempData));
+    }
+
+    if(bytesReceived == -1 && errno != EAGAIN && errno != EWOULDBLOCK){
+        perror("Error in recv(). Unable to receive data. Timeout");
+        return -1;
+    }
+    return dataReceived;
+}
 
 
 
