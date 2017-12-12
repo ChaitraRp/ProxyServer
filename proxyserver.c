@@ -185,6 +185,70 @@ int sendErrorMessage(int clientsockfd, char* errorMsg, char* errorContent){
 
 
 
+//-------------------------------ERROR HANDLING------------------------------------
+int otherRequestErrors(int clientsockfd, HTTP_REQUEST httpReq){
+    if(strcmp(httpReq.HTTP_COMMAND, "GET") != 0){
+        if(strcmp(httpReq.HTTP_COMMAND, "HEAD") == 0 || strcmp(httpReq.HTTP_COMMAND, "POST") == 0 || strcmp(httpReq.HTTP_COMMAND, "PUT") == 0 || strcmp(httpReq.HTTP_COMMAND, "DELETE") == 0 || strcmp(httpReq.HTTP_COMMAND, "TRACE") == 0 || strcmp(httpReq.HTTP_COMMAND, "CONNECT") == 0){
+			
+            char* responseError = "Unsupported method";
+            char errorContent[strlen("<html><body>501 Not Implemented %s: %s</body></html>") + strlen(responseError) + strlen(httpReq.HTTP_COMMAND)+1];
+            bzero(errorContent, sizeof(errorContent));
+            snprintf(errorContent, sizeof(errorContent), "<html><body>501 Not Implemented %s: %s</body></html>", responseError, httpReq.HTTP_COMMAND);
+
+            char errorMessageHead[strlen("HTTP/1.1 501 Not Implemented\r\nContent-Length: %lu")+10+1];
+            bzero(errorMessageHead, sizeof(errorMessageHead));
+            snprintf(errorMessageHead, sizeof(errorMessageHead), "HTTP/1.1 501 Not Implemented\r\nContent-Length: %lu", sizeof(errorContent));
+
+            sendErrorMessage(clientsockfd, errorMessageHead, errorContent);
+            return -1;
+        }
+        
+		else{
+            char errorContent[strlen("<html><body>400 Bad Request: %s</body></html>") + strlen(httpReq.HTTP_COMMAND)+1];
+            bzero(errorContent, sizeof(errorContent));
+            snprintf(errorContent, sizeof(errorContent), "<html><body>400 Bad Request: %s</body></html>", httpReq.HTTP_COMMAND);
+
+            char errorMessageHead[strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu")+10+1];
+            bzero(errorMessageHead, sizeof(errorMessageHead));
+            snprintf(errorMessageHead, sizeof(errorMessageHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(errorContent));
+
+            sendErrorMessage(clientsockfd, errorMessageHead, errorContent);
+            return -1;
+        }
+    }
+    
+	else if(!(strcmp(httpReq.HTTP_VERSION, "HTTP/1.0") == 0 || strcmp(httpReq.HTTP_VERSION, "HTTP/1.1") == 0)){
+        char errorContent[strlen("<html><body>400 Bad Request - Invalid HTTP-Version: %s</body></html>") + strlen(httpReq.HTTP_VERSION)+1];
+        bzero(errorContent, sizeof(errorContent));
+        snprintf(errorContent, sizeof(errorContent), "<html><body>400 Bad Request - Invalid HTTP-Version: %s</body></html>", httpReq.HTTP_VERSION);
+
+        char errorMessageHead[strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu")+10+1];
+        bzero(errorMessageHead, sizeof(errorMessageHead));
+        snprintf(errorMessageHead, sizeof(errorMessageHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(errorContent));
+
+        sendErrorMessage(clientsockfd, errorMessageHead, errorContent);
+        return -1;
+    }
+	
+    else if(strcmp(httpReq.COMPLETE_PATH, "") == 0){
+        char errorContent[strlen("<html><body>400 Bad Request - Invalid URL: \"%s\"</body></html>") + strlen(httpReq.COMPLETE_PATH)+1];
+        bzero(errorContent, sizeof(errorContent));
+        snprintf(errorContent, sizeof(errorContent), "<html><body>400 Bad Request - Invalid URL: \"%s\"</body></html>", httpReq.COMPLETE_PATH);
+
+        char errorMessageHead[strlen("HTTP/1.1 400 Bad Request\r\nContent-Length: %lu")+10+1];
+        bzero(errorMessageHead, sizeof(errorMessageHead));
+        snprintf(errorMessageHead, sizeof(errorMessageHead), "HTTP/1.1 400 Bad Request\r\nContent-Length: %lu", sizeof(errorContent));
+
+        sendErrorMessage(clientsockfd, errorMessageHead, errorContent);
+        return -1;
+    }
+    return 0;
+}
+
+
+
+
+
 //-----------------------------------------MAIN-------------------------------------
 //Ref: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
 //Ref: https://msdn.microsoft.com/en-us/library/windows/desktop/ms740496(v=vs.85).aspx
