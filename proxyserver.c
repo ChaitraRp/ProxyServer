@@ -100,8 +100,7 @@ int receiveData(int clientsockfd, char** data){
 
 
 //----------------------------PARSE HTTP_REQUEST-----------------------------------
-int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct)
-{
+int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     char tempBuf[reqBufLength];
 	char *temp1;
 	char *temp2;
@@ -141,6 +140,45 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct)
     if((reqBody = strstr(reqBuf, "\r\n\r\n")) != NULL && strlen(reqBody) > 4)
         httpStruct->HTTP_BODY = strdup(reqBody);
 
+    return 0;
+}
+
+
+
+//--------------------------------INTERNAL ERROR------------------------------------
+int internalError(int clientsockfd, char* errMsg){
+    char errorMessage[strlen("500 Internal Server Error: %s") + strlen(errMsg) + 1];
+	bzero(errorMessage, sizeof(errorMessage));
+	
+	if(clientsockfd == -1)
+        return 1;
+    snprintf(errorMessage, sizeof(errorMessage), "500 Internal Server Error: %s", errMsg);
+    sendErrorMessage(clientsockfd, errorMessage, NULL);
+    return 0;
+}
+
+
+
+//------------------------------SEND ERROR MESSAGE----------------------------------
+int sendErrorMessage(int clientsockfd, char* errorMsg, char* errorContent){
+    int errorMessageLength;
+	int errorContentLength;
+	
+	if(errorMsg != NULL)
+		errorMessageLength = strlen(errorMsg);
+	else
+		errorMessageLength = 0;
+	
+	if(errorContent != NULL)
+		errorContentLength = strlen(errorContent);
+	else
+		errorContentLength = 0;
+
+    char responseErrorMessage[errorMessageLength + errorContentLength + 5];
+    bzero(responseErrorMessage, sizeof(responseErrorMessage));
+    snprintf(responseErrorMessage, sizeof(responseErrorMessage), "%s\r\n%s\r\n", errorMsg, errorContent != NULL ? errorContent : "");
+
+    send(clientsockfd, responseErrorMessage, strlen(responseErrorMessage)+1, 0);
     return 0;
 }
 
