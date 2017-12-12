@@ -27,6 +27,7 @@
 #define MAXCONN 20
 #define MAXRECVBUFSIZE 10000
 #define MAXREQBUFFERSIZE 1000
+#define CACHEDIR ".cache"
 
 //----------------------------------GLOBAL VARIABLES-------------------------------
 long int cacheTimeout;
@@ -245,6 +246,90 @@ int otherRequestErrors(int clientsockfd, HTTP_REQUEST httpReq){
     return 0;
 }
 
+
+
+
+
+//----------------------------FETCH THE REQUESTED PAGE------------------------------
+int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int* responseBufLength, int clientsockfd){
+    char cachedPage[33];
+	char cacheExists = 0;
+    char isCacheValid = 0;
+    int cacheFileSize;
+	FILE* cacheFp;
+	
+    bzero(cachedPage, sizeof(cachedPage));
+    computeMD5(req->COMPLETE_PATH, strlen(req->COMPLETE_PATH)+1, cachedPage);
+
+    char cachedPagePath[strlen(CACHEDIR) + strlen(cachedPage) + 2];
+    bzero(cachedPagePath, (strlen(CACHEDIR) + strlen(cachedPage) + 2)*sizeof(char));
+    snprintf(cachedPagePath, sizeof(cachedPagePath)*sizeof(char), "%s/%s", CACHEDIR, cachedPage);
+
+	//check if cached page exists and find out the cached page time
+    if(access(cachedPagePath, F_OK) == 0){
+        cacheExists = 1;
+        long int cachedPageTime = getTimeElapsedSinceCached(cachedPagePath);
+        if(cachedPageTime < cacheTimeout)
+            isCacheValid = 1;
+    }
+	
+	//if cache exists and is valid then serve the request from the cache
+    if(cacheExists && isCacheValid){
+        if(debug)
+            printf("Serving cached data: %s\n", req->COMPLETE_PATH);
+
+        cacheFp = fopen(cachedPagePath, "rb");
+        if(fseek(cacheFp, 0, SEEK_END) < 0){
+            fclose(cacheFp);
+            internalError(clientsockfd, "Invalid cache file size");
+            return -1;
+        }
+
+        //check the cached file size
+		cacheFileSize = ftell(cacheFp);
+        if(cacheFileSize < 0){
+            fclose(cacheFp);
+            internalError(clientsockfd, "Cache file size not found");
+            return -1;
+        }
+		
+        rewind(cacheFp);
+        *responseBuf = calloc(cacheFileSize, sizeof(char));
+
+        if((*responseBufLength = fread(*responseBuf, sizeof(char), cacheFileSize, cacheFp)) != cacheFileSize){
+            perror("Error in reading data from cached page");
+            internalError(clientsockfd, "Error in reading data from cached page");
+            fclose(cacheFp);
+            return -1;
+        }
+        fclose(cacheFp);
+    }
+    
+	//This is in case cached page does not exist
+	else{
+        if(debug)
+            printf("Serving file form server: %s\n", req->COMPLETE_PATH);
+
+        if(serveDataFromServer(serversockfd, req) < 0){
+            printf("Server request error\n");
+            internalError(clientsockfd, "Server request error");
+            return -1;
+        }
+
+        if((*responseBufLength = receiveData(*serversockfd, responseBuf)) < 0){
+            perror("Server response error");
+            internalError(clientsockfd, "Server response error");
+            return -1;
+        }
+        close(*serversockfd);
+
+        //add this entry to cache directory
+        cacheFp = fopen(cachedPagePath, "wb+");
+        fwrite(*responseBuf, sizeof(char), *responseBufLength, cacheFp);
+        fclose(cacheFp);
+    }
+    return 0;
+}
 
 
 
