@@ -153,7 +153,6 @@ int parseURL(char* path, URL* urlData){
             exit(1);
         }
 	}
-	
     free(temp);
     return 0;
 }
