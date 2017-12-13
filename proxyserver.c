@@ -43,13 +43,13 @@ char blockedSitesFilename[] = "blocked_sites.txt";
 
 
 //----------------------------------STRUCT FOR URL---------------------------------
-typedef struct URL {
+typedef struct URL{
     char *SERVICE, *DOMAIN, *PORT, *PATH;
 } URL;
 
 
 //--------------------------------STRUCT FOR HTTP REQUEST--------------------------
-typedef struct http_request {
+typedef struct http_request{
     char *HTTP_COMMAND, *COMPLETE_PATH, *HTTP_VERSION, *HTTP_BODY;
     URL* HTTP_REQ_URL;
 } HTTP_REQUEST;
@@ -152,7 +152,7 @@ void blockedWebsites(int clientsockfd, URL* urlData2, struct hostent *h){
 		//printf("Line: %s\n", line);
 		if(strstr(line, address) || strstr(line, h->h_name)){
 			printf("--------------------------------------------\n");
-			printf("ERROR 403 Forbidden: Blocked URL");
+			printf("ERROR 403 Forbidden: Blocked URL\n");
 			
 			char *responseError = "Blocked URL";
             char errorContent[strlen("<html><body>ERROR 403 Forbidden: %s</body></html>") + strlen(responseError)+1];
@@ -212,25 +212,26 @@ int parseURL(int clientsockfd, char* path, URL* urlData){
 		printf("****************************************************************\n");
 	}
 	
-	if(urlData->DOMAIN != NULL){
-		hp = gethostbyname(urlData->DOMAIN);
-        if(!hp){
-            printf("SERVER NOT FOUND\n");
-            exit(1);
-        }
-		else if(strcmp("443", hp->h_name) != 0){
-			printf("%s = ", hp->h_name);
-			unsigned int i=0;
-			printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0]))); 
-			
-			/*while(hp->h_addr_list[i] != NULL){
-				printf( "%s ", inet_ntoa( *( struct in_addr*)( hp -> h_addr_list[i])));
-				i++;
-			}*/
-		}
+	if(clientsockfd != -5){
+		if(urlData->DOMAIN != NULL){
+			hp = gethostbyname(urlData->DOMAIN);
+			if(!hp){
+				printf("SERVER NOT FOUND\n");
+				exit(1);
+			}
+			else if(strcmp("443", hp->h_name) != 0){
+				printf("%s = ", hp->h_name);
+				unsigned int i=0;
+				printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0]))); 
+				
+				/*while(hp->h_addr_list[i] != NULL){
+					printf( "%s ", inet_ntoa( *( struct in_addr*)( hp -> h_addr_list[i])));
+					i++;
+				}*/
+			}
+		}	
+		blockedWebsites(clientsockfd, urlData, hp);
 	}
-	
-	blockedWebsites(clientsockfd, urlData, hp);
     
 	free(temp);
     return 0;
@@ -616,6 +617,91 @@ void cleanHTTPStructure(HTTP_REQUEST* temp){
 
 
 
+//--------------------------LINK PREFETCH HELPER FUNCTION--------------------------
+int linkPrefetchData(HTTP_REQUEST mainLink, char* subLink, char** destination){
+    int fullPathLength;
+	char* portNum;
+	
+	if(subLink[0] == '/'){
+		if(mainLink.HTTP_REQ_URL->PORT != NULL)
+			portNum = mainLink.HTTP_REQ_URL->PORT;
+		else
+			portNum = "";
+        
+        fullPathLength = strlen(mainLink.HTTP_REQ_URL->SERVICE) + strlen(mainLink.HTTP_REQ_URL->DOMAIN) + strlen(portNum) + strlen(subLink) + 5;
+		
+        *destination = malloc((fullPathLength)*sizeof(char));
+
+        if(strlen(portNum) != 0){
+            snprintf(*destination, fullPathLength, "%s://%s:%s%s", mainLink.HTTP_REQ_URL->SERVICE, mainLink.HTTP_REQ_URL->DOMAIN, portNum, subLink);
+        }
+        else{
+            snprintf(*destination, fullPathLength, "%s://%s%s", mainLink.HTTP_REQ_URL->SERVICE, mainLink.HTTP_REQ_URL->DOMAIN, subLink);
+        }
+    }
+	
+    else if(strstr(subLink, "://") != NULL)
+        *destination = strdup(subLink);
+	
+    else{
+        int fullPathLength = strlen(mainLink.COMPLETE_PATH) + strlen(subLink) + 2;
+        *destination = malloc((fullPathLength)*sizeof(char));
+        snprintf(*destination, fullPathLength, "%s/%s", mainLink.COMPLETE_PATH, subLink);
+    }
+    return 0;
+}
+
+
+
+
+//----------------------------------LINK PREFETCH-----------------------------------
+int linkPrefetch(HTTP_REQUEST mainPage, char* responseBuff){
+    char *mainResponse = strdup(responseBuff);
+	char *link;
+	char *link2;
+	
+    while((link = strstr(mainResponse, "href=\"")) != NULL){
+        int linkLength = strlen(link);
+        int beginPtr = 6; //length of href="
+        
+		for(; beginPtr <= linkLength && link[beginPtr] != '\"'; beginPtr++);
+
+        link2 = strndup(link+6, beginPtr-6);
+
+        HTTP_REQUEST httpLinkPrefetch;
+        bzero(&httpLinkPrefetch, sizeof(httpLinkPrefetch));
+        
+		httpLinkPrefetch.HTTP_COMMAND = "GET";
+        httpLinkPrefetch.HTTP_VERSION = "HTTP/1.1";
+
+        linkPrefetchData(mainPage, link2, &httpLinkPrefetch.COMPLETE_PATH);
+
+        httpLinkPrefetch.HTTP_REQ_URL = calloc(1, sizeof(URL));
+        parseURL(-5, httpLinkPrefetch.COMPLETE_PATH, httpLinkPrefetch.HTTP_REQ_URL);
+
+        int serversockfd, responseLen;
+        char *responseBuff;
+        if(fetchResponse(&serversockfd, &httpLinkPrefetch, &responseBuff, &responseLen, -1) < 0)
+            continue;
+
+		//free all buffers
+        free(link2);
+		if(httpLinkPrefetch.COMPLETE_PATH != NULL)
+            free(httpLinkPrefetch.COMPLETE_PATH);
+        clearURLStruct(httpLinkPrefetch.HTTP_REQ_URL);
+        free(httpLinkPrefetch.HTTP_REQ_URL);
+
+        if(beginPtr + 1 < linkLength)
+            mainResponse = link + beginPtr + 1;
+        else
+            break;
+    }//end of while
+    return 0;
+}
+
+
+
+
 //-----------------------------------------MAIN-------------------------------------
 //Reference: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
 //Reference: https://msdn.microsoft.com/en-us/library/windows/desktop/ms740496(v=vs.85).aspx
@@ -701,9 +787,9 @@ int main(int argc, char* argv[]){
                 close(clientSock);
 
                 //link prefetch (extra credit)
-                //debug = 1;
-                //prefetch(httprequest, otherResponse, otherResponseLength);
-                //exit(0);
+                debug = 1;
+                linkPrefetch(httprequest, otherResponse);
+                exit(0);
             }
 			
 			//clean up
