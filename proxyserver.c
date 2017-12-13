@@ -28,6 +28,7 @@
 #define MAXRECVBUFSIZE 10000
 #define MAXREQBUFFERSIZE 1000
 #define CACHEDIR ".cache"
+#define DEFAULT_PORT "80"
 
 //----------------------------------GLOBAL VARIABLES-------------------------------
 long int cacheTimeout;
@@ -51,7 +52,7 @@ typedef struct http_request {
 
 
 //------------------------------RECEIVE DATA FUNCTION------------------------------
-//Ref: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
+//Reference: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
 int receiveData(int clientsockfd, char** data){
 	int dataLength = 0;
     int dataReceived = 0;
@@ -305,6 +306,73 @@ long int getTimeElapsedSinceCached(char* cacheFilename){
 
 
 
+//-----------------------------SERVE DATA FROM SERVER-------------------------------
+//Reference: https://msdn.microsoft.com/en-us/library/windows/desktop/ms737530(v=vs.85).aspx
+//Reference: https://github.com/angrave/SystemProgramming/wiki/Networking,-Part-2:-Using-getaddrinfo
+int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
+	struct addrinfo *results;
+	struct addrinfo hints;
+	int value;
+	
+    bzero(&hints, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    char *portNumber = httpRequest->HTTP_REQ_URL->PORT;
+    if(portNumber == NULL)
+        portNumber = DEFAULT_PORT;
+
+    if((value = getaddrinfo(httpRequest->HTTP_REQ_URL->DOMAIN, portNumber, &hints, &results)) != 0){
+        printf("Unable to fetch from %s:%s\n", httpRequest->HTTP_REQ_URL->DOMAIN, portNumber);
+        printf("getaddrinfo() error: %s\n", gai_strerror(value));
+        return -1;
+    }
+
+    if(results !=NULL && results->ai_addr != NULL){
+        *serverSocketFd = socket(results->ai_addr->sa_family, results->ai_socktype, results->ai_protocol);
+
+        if(connect(*serverSocketFd, results->ai_addr, results->ai_addrlen) != 0){
+            perror("Error in connect()");
+            return -1;
+        }
+
+        char httpRequestBuffer[MAXREQBUFFERSIZE];
+        bzero(httpRequestBuffer, sizeof(httpRequestBuffer));
+        
+		int httpRequestBufferSize = sizeof(httpRequestBuffer);
+		
+		if(httpRequest->HTTP_BODY != NULL){
+			snprintf(httpRequestBuffer, httpRequestBufferSize, "%s %s %s\r\nHost: %s\r\nContent-Length: %lu\r\n\r\n%s",
+			httpRequest->HTTP_COMMAND,
+			httpRequest->COMPLETE_PATH,
+			httpRequest->HTTP_VERSION,
+			httpRequest->HTTP_REQ_URL->DOMAIN,
+			strlen(httpRequest->HTTP_BODY),
+			httpRequest->HTTP_BODY);
+		}
+		else{
+			snprintf(httpRequestBuffer, httpRequestBufferSize, "%s %s %s\r\nHost: %s\r\n\r\n",
+			httpRequest->HTTP_COMMAND,
+			httpRequest->COMPLETE_PATH,
+			httpRequest->HTTP_VERSION,
+			httpRequest->HTTP_REQ_URL->DOMAIN);
+		}
+		
+        if(send(*serverSocketFd, httpRequestBuffer, sizeof(httpRequestBuffer), 0) < 0){
+            perror("Error in send()");
+            return -1;
+        }
+    }
+
+    freeaddrinfo(results);
+    return 0;
+}
+
+
+
+
+
+
 //----------------------------FETCH THE REQUESTED PAGE------------------------------
 int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int* responseBufLength, int clientsockfd){
     char cachedPage[33];
@@ -363,7 +431,7 @@ int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int*
 	//This is in case cached page does not exist
 	else{
         if(debug)
-            printf("Serving file form server: %s\n", req->COMPLETE_PATH);
+            printf("Serving from server: %s\n", req->COMPLETE_PATH);
 
         if(serveDataFromServer(serversockfd, req) < 0){
             printf("Server request error\n");
@@ -390,8 +458,8 @@ int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int*
 
 
 //-----------------------------------------MAIN-------------------------------------
-//Ref: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
-//Ref: https://msdn.microsoft.com/en-us/library/windows/desktop/ms740496(v=vs.85).aspx
+//Reference: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
+//Reference: https://msdn.microsoft.com/en-us/library/windows/desktop/ms740496(v=vs.85).aspx
 int main(int argc, char* argv[]){
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
