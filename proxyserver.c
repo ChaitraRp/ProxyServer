@@ -50,7 +50,6 @@ typedef struct http_request {
 
 
 
-
 //------------------------------RECEIVE DATA FUNCTION------------------------------
 //Ref: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
 int receiveData(int clientsockfd, char** data){
@@ -272,6 +271,36 @@ void computeMD5(char* cPath, int cPathLen, char *cPageName){
     }
     pclose(fp);
 }
+
+
+
+
+//---------------------------------GET CACHE TIME----------------------------------
+long int getTimeElapsedSinceCached(char* cacheFilename){
+    char getFileDateCommand[strlen("expr $(date +%s) - $(date -r ") + strlen(cacheFilename) + strlen(" +%s)") + 1];
+    char temp[50];
+    FILE *fp;
+
+    bzero(getFileDateCommand, sizeof(getFileDateCommand));
+
+    strncpy(getFileDateCommand, "expr $(date +%s) - $(date -r ", sizeof(getFileDateCommand)-strlen(getFileDateCommand)-1);
+    strncat(getFileDateCommand, cacheFilename, sizeof(getFileDateCommand)-strlen(getFileDateCommand)-1);
+    strncat(getFileDateCommand, " +%s)", sizeof(getFileDateCommand)-strlen(getFileDateCommand)-1);
+
+    if(!(fp = popen(getFileDateCommand, "r"))){
+        perror("get cache time error");
+        return -1;
+    }
+
+    if(fread(temp, 1, sizeof(temp), fp) == 0){
+        perror("error in getting cache page time");
+        return -1;
+    }
+
+    pclose(fp);
+    return strtol(temp, NULL, 10);
+}
+
 
 
 
