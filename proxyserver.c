@@ -36,7 +36,9 @@
 long int cacheTimeout;
 int proxySocket;
 int debug = 1;
+int http_debug = 0;
 struct timeval timeout;
+struct hostent *hp;
 
 
 //----------------------------------STRUCT FOR URL---------------------------------
@@ -106,6 +108,7 @@ int receiveData(int clientsockfd, char** data){
 
 
 //----------------------------PARSE URL STRUCT-------------------------------------
+//Ref: https://paulschreiber.com/blog/2005/10/28/simple-gethostbyname-example/
 int parseURL(char* path, URL* urlData){
     char *reqURL;
 	char *reqDomain;
@@ -134,6 +137,23 @@ int parseURL(char* path, URL* urlData){
     if(reqURL != NULL)
         urlData->PATH = strdup(reqURL);
 
+	if(http_debug == 1){
+		printf("****************************************************************\n");
+		printf("URL SERVICE: %s\n", urlData->SERVICE);
+		printf("URL DOMAIN: %s\n", urlData->DOMAIN);
+		printf("URL PORT: %s\n", urlData->PORT);
+		printf("URL PATH: %s\n", urlData->PATH);
+		printf("****************************************************************\n");
+	}
+	
+	if(urlData->DOMAIN != NULL){
+		hp = gethostbyname(urlData->DOMAIN);
+        if(!hp){
+            printf("SERVER NOT FOUND\n");
+            exit(1);
+        }
+	}
+	
     free(temp);
     return 0;
 }
@@ -182,21 +202,14 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     if((reqBody = strstr(reqBuf, "\r\n\r\n")) != NULL && strlen(reqBody) > 4)
         httpStruct->HTTP_BODY = strdup(reqBody);
 
-    return 0;
-}
-
-
-
-
-//--------------------------------INTERNAL ERROR------------------------------------
-int internalError(int clientsockfd, char* errMsg){
-    char errorMessage[strlen("500 Internal Server Error: %s") + strlen(errMsg) + 1];
-	bzero(errorMessage, sizeof(errorMessage));
+	if(http_debug == 1){
+		printf("****************************************************************\n");
+		printf("HTTP COMMAND: %s\n", httpStruct->HTTP_COMMAND);
+		printf("HTTP PATH: %s\n", httpStruct->COMPLETE_PATH);
+		printf("HTTP VERSION: %s\n", httpStruct->HTTP_VERSION);
+		printf("****************************************************************\n");
+	}
 	
-	if(clientsockfd == -1)
-        return 1;
-    snprintf(errorMessage, sizeof(errorMessage), "500 Internal Server Error: %s", errMsg);
-    sendErrorMessage(clientsockfd, errorMessage, NULL);
     return 0;
 }
 
@@ -223,6 +236,21 @@ int sendErrorMessage(int clientsockfd, char* errorMsg, char* errorContent){
     snprintf(responseErrorMessage, sizeof(responseErrorMessage), "%s\r\n%s\r\n", errorMsg, errorContent != NULL ? errorContent : "");
 
     send(clientsockfd, responseErrorMessage, strlen(responseErrorMessage)+1, 0);
+    return 0;
+}
+
+
+
+
+//--------------------------------INTERNAL ERROR------------------------------------
+int internalError(int clientsockfd, char* errMsg){
+    char errorMessage[strlen("500 Internal Server Error: %s") + strlen(errMsg) + 1];
+	bzero(errorMessage, sizeof(errorMessage));
+	
+	if(clientsockfd == -1)
+        return 1;
+    snprintf(errorMessage, sizeof(errorMessage), "500 Internal Server Error: %s", errMsg);
+    sendErrorMessage(clientsockfd, errorMessage, NULL);
     return 0;
 }
 
