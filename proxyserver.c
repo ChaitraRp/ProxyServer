@@ -1,6 +1,7 @@
 //NETSYS PROGRAMMING ASSIGNMENT 2
 //Chaitra Ramachandra
 
+
 //-----------------------------------LIBRARIES--------------------------------------
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -30,6 +31,7 @@
 #define CACHEDIR ".cache"
 #define DEFAULT_PORT "80"
 
+
 //----------------------------------GLOBAL VARIABLES-------------------------------
 long int cacheTimeout;
 int proxySocket;
@@ -48,6 +50,7 @@ typedef struct http_request {
     char *HTTP_COMMAND, *COMPLETE_PATH, *HTTP_VERSION, *HTTP_BODY;
     URL* HTTP_REQ_URL;
 } HTTP_REQUEST;
+
 
 
 
@@ -102,6 +105,42 @@ int receiveData(int clientsockfd, char** data){
 
 
 
+//----------------------------PARSE URL STRUCT-------------------------------------
+int parseURL(char* path, URL* urlData){
+    char *reqURL;
+	char *reqDomain;
+	char *urlChunks;
+	char* portNum = NULL;
+	char *temp = strdup(path);
+
+    urlChunks = strtok_r(temp, ":/", &reqURL);
+    if(urlChunks != NULL)
+        urlData->SERVICE = strdup(urlChunks);
+
+    urlChunks = strtok_r(NULL, "/", &reqURL);
+    if(urlChunks != NULL){
+        char* urlDomain = strtok_r(urlChunks, ":", &reqDomain);
+        if(urlDomain != NULL){
+            urlData->DOMAIN = strdup(urlDomain);
+
+            while((urlDomain = strtok_r(NULL, ":", &reqDomain)) != NULL)
+                portNum = urlDomain;
+
+            if(portNum != NULL)
+                urlData->PORT = strdup(portNum);
+        }
+    }
+
+    if(reqURL != NULL)
+        urlData->PATH = strdup(reqURL);
+
+    free(temp);
+    return 0;
+}
+
+
+
+
 //----------------------------PARSE HTTP_REQUEST-----------------------------------
 int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     char tempBuf[reqBufLength];
@@ -148,6 +187,7 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
 
 
 
+
 //--------------------------------INTERNAL ERROR------------------------------------
 int internalError(int clientsockfd, char* errMsg){
     char errorMessage[strlen("500 Internal Server Error: %s") + strlen(errMsg) + 1];
@@ -159,6 +199,7 @@ int internalError(int clientsockfd, char* errMsg){
     sendErrorMessage(clientsockfd, errorMessage, NULL);
     return 0;
 }
+
 
 
 
@@ -251,7 +292,6 @@ int otherRequestErrors(int clientsockfd, HTTP_REQUEST httpReq){
 
 
 
-
 //-------------------------------COMPUTE MD5---------------------------------------
 void computeMD5(char* cPath, int cPathLen, char *cPageName){
     char MD5CmdBuffer[strlen("echo \"") + strlen("\" | md5sum") + cPathLen + 1];
@@ -302,7 +342,6 @@ long int getTimeElapsedSinceCached(char* cacheFilename){
     pclose(fp);
     return strtol(temp, NULL, 10);
 }
-
 
 
 
@@ -368,7 +407,6 @@ int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
     freeaddrinfo(results);
     return 0;
 }
-
 
 
 
