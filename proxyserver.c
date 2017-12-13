@@ -518,7 +518,7 @@ int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int*
 	//if cache exists and is valid then serve the request from the cache
     if(cacheExists && isCacheValid){
         if(debug)
-            printf("Serving cached data: %s\n", req->COMPLETE_PATH);
+            printf("Fetching from cached data: %s\n", req->COMPLETE_PATH);
 
         cacheFp = fopen(cachedPagePath, "rb");
         if(fseek(cacheFp, 0, SEEK_END) < 0){
@@ -550,7 +550,7 @@ int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int*
 	//This is in case cached page does not exist
 	else{
         if(debug)
-            printf("Serving from server: %s\n", req->COMPLETE_PATH);
+            printf("Fetching from server: %s\n", req->COMPLETE_PATH);
 
         if(serveDataFromServer(serversockfd, req) < 0){
             printf("Server request error\n");
