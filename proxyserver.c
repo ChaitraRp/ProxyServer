@@ -50,6 +50,7 @@ typedef struct http_request {
 
 
 
+
 //------------------------------RECEIVE DATA FUNCTION------------------------------
 //Ref: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
 int receiveData(int clientsockfd, char** data){
@@ -246,6 +247,31 @@ int otherRequestErrors(int clientsockfd, HTTP_REQUEST httpReq){
     return 0;
 }
 
+
+
+
+
+//-------------------------------COMPUTE MD5---------------------------------------
+void computeMD5(char* cPath, int cPathLen, char *cPageName){
+    char MD5CmdBuffer[strlen("echo \"") + strlen("\" | md5sum") + cPathLen + 1];
+    FILE * fp;
+
+    bzero(MD5CmdBuffer, sizeof(MD5CmdBuffer));
+    strncpy(MD5CmdBuffer, "echo \"", sizeof(MD5CmdBuffer)-strlen(MD5CmdBuffer)-1);
+    strncat(MD5CmdBuffer, cPath, sizeof(MD5CmdBuffer)-strlen(MD5CmdBuffer)-1);
+    strncat(MD5CmdBuffer, "\" | md5sum", sizeof(MD5CmdBuffer)-strlen(MD5CmdBuffer)-1);
+
+    if(!(fp = popen(MD5CmdBuffer, "r"))){
+        perror("MD5 command error");
+        return;
+    }
+
+    if(fread(cPageName, 1, 32, fp) != 32){
+        perror("MD5 command error");
+        return;
+    }
+    pclose(fp);
+}
 
 
 
