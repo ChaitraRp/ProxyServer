@@ -1,0 +1,5 @@
+www.facebook.com
+www.cnn.com
+10.10.10.10
+192.168.43.20
+morse.colorado.edu

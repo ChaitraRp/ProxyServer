@@ -39,6 +39,7 @@ int debug = 1;
 int http_debug = 0;
 struct timeval timeout;
 struct hostent *hp;
+char blockedSitesFilename[] = "blocked_sites.txt";
 
 
 //----------------------------------STRUCT FOR URL---------------------------------
@@ -107,9 +108,74 @@ int receiveData(int clientsockfd, char** data){
 
 
 
+
+//------------------------------SEND ERROR MESSAGE----------------------------------
+int sendErrorMessage(int clientsockfd, char* errorMsg, char* errorContent){
+    int errorMessageLength;
+	int errorContentLength;
+	
+	if(errorMsg != NULL)
+		errorMessageLength = strlen(errorMsg);
+	else
+		errorMessageLength = 0;
+	
+	if(errorContent != NULL)
+		errorContentLength = strlen(errorContent);
+	else
+		errorContentLength = 0;
+
+    char responseErrorMessage[errorMessageLength + errorContentLength + 5];
+    bzero(responseErrorMessage, sizeof(responseErrorMessage));
+    snprintf(responseErrorMessage, sizeof(responseErrorMessage), "%s\r\n%s\r\n", errorMsg, errorContent != NULL ? errorContent : "");
+
+    send(clientsockfd, responseErrorMessage, strlen(responseErrorMessage)+1, 0);
+    return 0;
+}
+
+
+
+
+//---------------------------------BLOCKED WEBSITE----------------------------------
+//Ref: http://www.geekinterview.com/question_details/85833
+void blockedWebsites(int clientsockfd, URL* urlData2, struct hostent *h){
+	char *address = urlData2->DOMAIN;
+	FILE *fp;
+	char line[200];
+	
+	fp = fopen(blockedSitesFilename, "r");
+	if(!fp){
+		perror("Could not open file");
+		exit(0);
+	}
+	
+	while(fgets(line, 200, fp) != NULL){
+		//printf("Line: %s\n", line);
+		if(strstr(line, address) || strstr(line, h->h_name)){
+			printf("--------------------------------------------\n");
+			printf("ERROR 403 Forbidden: Blocked URL");
+			
+			char *responseError = "Blocked URL";
+            char errorContent[strlen("<html><body>ERROR 403 Forbidden: %s</body></html>") + strlen(responseError)+1];
+            bzero(errorContent, sizeof(errorContent));
+            snprintf(errorContent, sizeof(errorContent), "<html><body>ERROR 403 Forbidden: %s</body></html>", responseError);
+
+            char errorMessageHead[strlen("HTTP/1.1 403 Forbidden\r\nContent-Length: %lu")+10+1];
+            bzero(errorMessageHead, sizeof(errorMessageHead));
+            snprintf(errorMessageHead, sizeof(errorMessageHead), "HTTP/1.1 403 Forbidden\r\nContent-Length: %lu", sizeof(errorContent));
+
+            sendErrorMessage(clientsockfd, errorMessageHead, errorContent);
+			//exit(1);
+		}
+	}
+	fclose(fp);
+}
+
+
+
+
 //----------------------------PARSE URL STRUCT-------------------------------------
 //Ref: https://paulschreiber.com/blog/2005/10/28/simple-gethostbyname-example/
-int parseURL(char* path, URL* urlData){
+int parseURL(int clientsockfd, char* path, URL* urlData){
     char *reqURL;
 	char *reqDomain;
 	char *urlChunks;
@@ -152,7 +218,7 @@ int parseURL(char* path, URL* urlData){
             printf("SERVER NOT FOUND\n");
             exit(1);
         }
-		else if(hp->h_name != "443"){
+		else if(strcmp("443", hp->h_name) != 0){
 			printf("%s = ", hp->h_name);
 			unsigned int i=0;
 			printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0]))); 
@@ -163,6 +229,8 @@ int parseURL(char* path, URL* urlData){
 			}*/
 		}
 	}
+	
+	blockedWebsites(clientsockfd, urlData, hp);
     
 	free(temp);
     return 0;
@@ -172,7 +240,7 @@ int parseURL(char* path, URL* urlData){
 
 
 //----------------------------PARSE HTTP_REQUEST-----------------------------------
-int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
+int parseHTTPRequest(int clientsockfd, char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     char tempBuf[reqBufLength];
 	char *temp1;
 	char *temp2;
@@ -198,7 +266,7 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     if(reqVal != NULL){
         httpStruct->COMPLETE_PATH = strdup(reqVal);
         httpStruct->HTTP_REQ_URL = calloc(1, sizeof(URL));
-        parseURL(httpStruct->COMPLETE_PATH, httpStruct->HTTP_REQ_URL);
+        parseURL(clientsockfd, httpStruct->COMPLETE_PATH, httpStruct->HTTP_REQ_URL);
     }
 
     reqVal = strtok_r(NULL, " ", &temp2);
@@ -226,32 +294,6 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
 
 
 
-//------------------------------SEND ERROR MESSAGE----------------------------------
-int sendErrorMessage(int clientsockfd, char* errorMsg, char* errorContent){
-    int errorMessageLength;
-	int errorContentLength;
-	
-	if(errorMsg != NULL)
-		errorMessageLength = strlen(errorMsg);
-	else
-		errorMessageLength = 0;
-	
-	if(errorContent != NULL)
-		errorContentLength = strlen(errorContent);
-	else
-		errorContentLength = 0;
-
-    char responseErrorMessage[errorMessageLength + errorContentLength + 5];
-    bzero(responseErrorMessage, sizeof(responseErrorMessage));
-    snprintf(responseErrorMessage, sizeof(responseErrorMessage), "%s\r\n%s\r\n", errorMsg, errorContent != NULL ? errorContent : "");
-
-    send(clientsockfd, responseErrorMessage, strlen(responseErrorMessage)+1, 0);
-    return 0;
-}
-
-
-
-
 //--------------------------------INTERNAL ERROR------------------------------------
 int internalError(int clientsockfd, char* errMsg){
     char errorMessage[strlen("500 Internal Server Error: %s") + strlen(errMsg) + 1];
@@ -272,7 +314,7 @@ int otherRequestErrors(int clientsockfd, HTTP_REQUEST httpReq){
     if(strcmp(httpReq.HTTP_COMMAND, "GET") != 0){
         if(strcmp(httpReq.HTTP_COMMAND, "HEAD") == 0 || strcmp(httpReq.HTTP_COMMAND, "POST") == 0 || strcmp(httpReq.HTTP_COMMAND, "PUT") == 0 || strcmp(httpReq.HTTP_COMMAND, "DELETE") == 0 || strcmp(httpReq.HTTP_COMMAND, "TRACE") == 0 || strcmp(httpReq.HTTP_COMMAND, "CONNECT") == 0){
 			
-            char* responseError = "Unsupported method";
+            char *responseError = "Unsupported method";
             char errorContent[strlen("<html><body>501 Not Implemented %s: %s</body></html>") + strlen(responseError) + strlen(httpReq.HTTP_COMMAND)+1];
             bzero(errorContent, sizeof(errorContent));
             snprintf(errorContent, sizeof(errorContent), "<html><body>501 Not Implemented %s: %s</body></html>", responseError, httpReq.HTTP_COMMAND);
@@ -634,7 +676,7 @@ int main(int argc, char* argv[]){
             HTTP_REQUEST httprequest;
             bzero(&httprequest, sizeof(httprequest));
 
-            if(parseHTTPRequest(requestBuffer, recvBytes, &httprequest) < 0){
+            if(parseHTTPRequest(clientSock, requestBuffer, recvBytes, &httprequest) < 0){
                 perror("Error in parseHTTPRequest()");
                 internalError(clientSock, "Unable to parse HTTP Request");
                 close(clientSock);
