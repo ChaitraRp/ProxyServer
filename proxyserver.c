@@ -101,6 +101,7 @@ int receiveData(int clientsockfd, char** data){
 
 
 
+
 //----------------------------PARSE HTTP_REQUEST-----------------------------------
 int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     char tempBuf[reqBufLength];
@@ -128,7 +129,7 @@ int parseHTTPRequest(char* reqBuf, int reqBufLength, HTTP_REQUEST* httpStruct){
     if(reqVal != NULL){
         httpStruct->COMPLETE_PATH = strdup(reqVal);
         httpStruct->HTTP_REQ_URL = calloc(1, sizeof(URL));
-        parse_url(httpStruct->COMPLETE_PATH, httpStruct->HTTP_REQ_URL);
+        parseURL(httpStruct->COMPLETE_PATH, httpStruct->HTTP_REQ_URL);
     }
 
     reqVal = strtok_r(NULL, " ", &temp2);
@@ -372,7 +373,6 @@ int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
 
 
 
-
 //----------------------------FETCH THE REQUESTED PAGE------------------------------
 int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int* responseBufLength, int clientsockfd){
     char cachedPage[33];
@@ -452,6 +452,47 @@ int fetchResponse(int* serversockfd, HTTP_REQUEST* req, char** responseBuf, int*
         fclose(cacheFp);
     }
     return 0;
+}
+
+
+
+
+//--------------------------------CLEAN URL STRUCTURE------------------------------
+void clearURLStruct(URL* tempURL){
+    if(tempURL->SERVICE != NULL)
+        free(tempURL->SERVICE);
+
+    if(tempURL->DOMAIN != NULL)
+        free(tempURL->DOMAIN);
+
+    if(tempURL->PORT != NULL)
+        free(tempURL->PORT);
+
+    if(tempURL->PATH != NULL)
+        free(tempURL->PATH);
+}
+
+
+
+
+//------------------------------CLEAN HTTP STRUCTURE--------------------------------
+void cleanHTTPStructure(HTTP_REQUEST* temp){
+    if(temp->HTTP_COMMAND != NULL)
+        free(temp->HTTP_COMMAND);
+
+    if(temp->COMPLETE_PATH != NULL)
+        free(temp->COMPLETE_PATH);
+
+    if(temp->HTTP_VERSION != NULL)
+        free(temp->HTTP_VERSION);
+
+    if(temp->HTTP_BODY != NULL)
+        free(temp->HTTP_BODY);
+
+    if(temp->HTTP_REQ_URL != NULL){
+        clearURLStruct(temp->HTTP_REQ_URL);
+        free(temp->HTTP_REQ_URL);
+    }
 }
 
 
@@ -542,9 +583,9 @@ int main(int argc, char* argv[]){
                 close(clientSock);
 
                 //link prefetch (extra credit)
-                debug = 1;
-                prefetch(httprequest, otherResponse, otherResponseLength);
-                exit(0);
+                //debug = 1;
+                //prefetch(httprequest, otherResponse, otherResponseLength);
+                //exit(0);
             }
 			
 			//clean up
