@@ -152,8 +152,19 @@ int parseURL(char* path, URL* urlData){
             printf("SERVER NOT FOUND\n");
             exit(1);
         }
+		else if(hp->h_name != "443"){
+			printf("%s = ", hp->h_name);
+			unsigned int i=0;
+			printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0]))); 
+			
+			/*while(hp->h_addr_list[i] != NULL){
+				printf( "%s ", inet_ntoa( *( struct in_addr*)( hp -> h_addr_list[i])));
+				i++;
+			}*/
+		}
 	}
-    free(temp);
+    
+	free(temp);
     return 0;
 }
 
