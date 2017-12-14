@@ -24,7 +24,7 @@
 
 
 //--------------------------------------#DEFINE------------------------------------
-#define DEFAULT_CACHE_TIMEOUT 10
+#define DEFAULT_CACHE_TIMEOUT 20
 #define MAXCONN 20
 #define MAXRECVBUFSIZE 10000
 #define MAXREQBUFFERSIZE 1000
@@ -61,6 +61,7 @@ typedef struct http_request{
 
 //------------------------------RECEIVE DATA FUNCTION------------------------------
 //Reference: https://stackoverflow.com/questions/28098563/errno-after-accept-in-linux-socket-programming
+//Reference: https://stackoverflow.com/questions/8874021/close-socket-directly-after-send-unsafe
 int receiveData(int clientsockfd, char** data){
 	int dataLength = 0;
     int dataReceived = 0;
@@ -438,6 +439,7 @@ long int getTimeElapsedSinceCached(char* cacheFilename){
 //-----------------------------SERVE DATA FROM SERVER-------------------------------
 //Reference: https://msdn.microsoft.com/en-us/library/windows/desktop/ms737530(v=vs.85).aspx
 //Reference: https://github.com/angrave/SystemProgramming/wiki/Networking,-Part-2:-Using-getaddrinfo
+//Reference: https://stackoverflow.com/questions/40782933/why-are-there-multiple-results-from-getaddrinfo/40785761
 int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
 	struct addrinfo *results;
 	struct addrinfo hints;
@@ -714,6 +716,7 @@ int linkPrefetch(HTTP_REQUEST mainPage, char* responseBuff){
 //-----------------------------------------MAIN-------------------------------------
 //Reference: https://techoverflow.net/2013/04/05/how-to-use-mkdir-from-sysstat-h/
 //Reference: https://msdn.microsoft.com/en-us/library/windows/desktop/ms740496(v=vs.85).aspx
+//Reference: http://beej.us/guide/bgnet/
 int main(int argc, char* argv[]){
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
