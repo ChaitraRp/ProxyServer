@@ -39,7 +39,9 @@ int debug = 1;
 int http_debug = 0;
 struct timeval timeout;
 struct hostent *hp;
+struct hostent *host;
 char blockedSitesFilename[] = "blocked_sites.txt";
+int count = 1;
 
 
 //----------------------------------STRUCT FOR URL---------------------------------
@@ -181,7 +183,8 @@ int parseURL(int clientsockfd, char* path, URL* urlData){
 	char *urlChunks;
 	char* portNum = NULL;
 	char *temp = strdup(path);
-
+	FILE *fp;
+	
     urlChunks = strtok_r(temp, ":/", &reqURL);
     if(urlChunks != NULL)
         urlData->SERVICE = strdup(urlChunks);
@@ -215,6 +218,7 @@ int parseURL(int clientsockfd, char* path, URL* urlData){
 	if(clientsockfd != -5){
 		if(urlData->DOMAIN != NULL){
 			hp = gethostbyname(urlData->DOMAIN);
+			//host = gethostbyaddr(urlData->DOMAIN, sizeof(urlData->DOMAIN), AF_INET);
 			if(!hp){
 				printf("SERVER NOT FOUND\n");
 				exit(1);
@@ -222,7 +226,11 @@ int parseURL(int clientsockfd, char* path, URL* urlData){
 			else if(strcmp("443", hp->h_name) != 0){
 				printf("%s = ", hp->h_name);
 				unsigned int i=0;
-				printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0]))); 
+				printf("%s\n", inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0])));
+				
+				fp = fopen("DNSCache.txt", "a");
+				fseek(fp, 0, SEEK_END);
+				fprintf(fp, "%s\t%s\n", urlData->DOMAIN, inet_ntoa(*(struct in_addr*)(hp->h_addr_list[0])));
 				
 				/*while(hp->h_addr_list[i] != NULL){
 					printf( "%s ", inet_ntoa( *( struct in_addr*)( hp -> h_addr_list[i])));
@@ -434,6 +442,7 @@ int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
 	struct addrinfo *results;
 	struct addrinfo hints;
 	int value;
+	FILE *fp;
 	
     bzero(&hints, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -442,7 +451,7 @@ int serveDataFromServer(int* serverSocketFd, HTTP_REQUEST* httpRequest){
     char *portNumber = httpRequest->HTTP_REQ_URL->PORT;
     if(portNumber == NULL)
         portNumber = DEFAULT_PORT;
-
+	
     if((value = getaddrinfo(httpRequest->HTTP_REQ_URL->DOMAIN, portNumber, &hints, &results)) != 0){
         printf("Unable to fetch from %s:%s\n", httpRequest->HTTP_REQ_URL->DOMAIN, portNumber);
         printf("getaddrinfo() error: %s\n", gai_strerror(value));
